@@ -16,10 +16,11 @@ export const generateFakeMotionData = (pointCount: number = 100): MotionDataPoin
       gyro_x: Math.sin(t * 4) * 45 + Math.random() * 5,
       gyro_y: Math.cos(t * 5) * 35 + Math.random() * 5,
       gyro_z: Math.sin(t * 7) * 40 + Math.random() * 5,
-      lat: 37.7749 + (Math.sin(t * 2) * 0.01),
+      lat: 37.7749 + (Math.sin(t * 2) * 0.01), // San Francisco coordinates with small variations
       lng: -122.4194 + (Math.cos(t * 2) * 0.01)
     });
   }
   
   return data;
 };
+

@@ -1,4 +1,3 @@
-
 import { MotionDataPoint, ProcessedMotionData } from "@/types/motionData";
 
 // Parse CSV data to structured format
@@ -49,7 +48,7 @@ export const processMotionData = (dataPoints: MotionDataPoint[]): ProcessedMotio
   const sortedData = [...dataPoints].sort((a, b) => a.timestamp - b.timestamp);
   
   // Calculate estimated speed
-  const dataWithSpeed = estimateSpeed(sortedData);
+  const dataWithSpeed = calculateSpeed(sortedData);
   
   const result: ProcessedMotionData = {
     timestamps: [],
@@ -101,7 +100,7 @@ export const processMotionData = (dataPoints: MotionDataPoint[]): ProcessedMotio
 };
 
 // Estimate speed from acceleration data
-const estimateSpeed = (dataPoints: MotionDataPoint[]): MotionDataPoint[] => {
+const calculateSpeed = (dataPoints: MotionDataPoint[]): MotionDataPoint[] => {
   if (dataPoints.length < 2) return dataPoints;
   
   const result = [...dataPoints];
@@ -114,33 +113,60 @@ const estimateSpeed = (dataPoints: MotionDataPoint[]): MotionDataPoint[] => {
     // Time difference in seconds
     const dt = (currentPoint.timestamp - prevPoint.timestamp) / 1000;
     
-    // Skip if time difference is too large or zero
     if (dt <= 0 || dt > 1) {
       currentPoint.estimatedSpeed = currentSpeed;
       continue;
     }
-    
-    // Calculate acceleration magnitude
+
+    // Calculate speed using both acceleration and GPS data
+    let speedFromAccel = 0;
+    let speedFromGPS = 0;
+
+    // Speed from acceleration
     const accelMag = Math.sqrt(
       currentPoint.accel_x * currentPoint.accel_x +
       currentPoint.accel_y * currentPoint.accel_y +
       currentPoint.accel_z * currentPoint.accel_z
-    );
-    
-    // Remove gravity component (9.8 m/s^2)
-    const accelWithoutGravity = Math.max(0, accelMag - 9.8);
-    
-    // Apply simple physics: v = v0 + a*t
-    currentSpeed += accelWithoutGravity * dt;
-    
-    // Apply decay factor to simulate friction
-    currentSpeed *= 0.95;
-    
-    // Ensure speed is never negative
+    ) - 9.81; // Remove gravity
+
+    speedFromAccel = Math.max(0, currentSpeed + accelMag * dt);
+
+    // Speed from GPS (if available)
+    if (currentPoint.lat && currentPoint.lng && prevPoint.lat && prevPoint.lng) {
+      const distance = calculateDistance(
+        prevPoint.lat, prevPoint.lng,
+        currentPoint.lat, currentPoint.lng
+      );
+      speedFromGPS = distance / dt; // m/s
+    }
+
+    // Combine both speed estimates (weighted average)
+    currentSpeed = speedFromGPS > 0 ? 
+      (speedFromAccel * 0.3 + speedFromGPS * 0.7) : // If GPS available, trust it more
+      speedFromAccel;
+
+    // Apply mild smoothing
+    currentSpeed = currentSpeed * 0.95;
     currentSpeed = Math.max(0, currentSpeed);
     
     currentPoint.estimatedSpeed = currentSpeed;
   }
   
   return result;
+};
+
+// Calculate distance between two GPS points using the Haversine formula
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371e3; // Earth's radius in meters
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+          Math.cos(φ1) * Math.cos(φ2) *
+          Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  return R * c; // Distance in meters
 };
